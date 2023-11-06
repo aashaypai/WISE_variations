@@ -3,7 +3,7 @@
 
 # In[199]:
 
-
+import os
 import numpy as np
 from collections import OrderedDict as od
 import scipy
@@ -34,8 +34,6 @@ from astropy.coordinates import Angle, Latitude, Longitude  # Angles
 
 from astropy.cosmology import LambdaCDM, FlatLambdaCDM
 
-from PIL import Image
-
 from astropy.io import ascii
 from astropy.io.ascii import masked
 from astropy.table import Table
@@ -55,8 +53,10 @@ import kcorrect.response
 # In[200]:
 
 
+#ASSEF_CUT = 0.8 #already in vega mags so remember to change vega mag to AB mag conversion
 ASSEF_CUT = -0.18
-
+SAVE_FILEPATH = os.path.join(os.path.curdir, 'WISE variations/Final Plots/')
+IMPORT_FILEPATH = os.path.join(os.path.curdir, 'WISE variations/')
 
 # ## file imports
 
@@ -64,17 +64,17 @@ ASSEF_CUT = -0.18
 
 
 def import_files():
-    manga_file = fits.open(r"C:\Users\paiaa\Downloads\mnsa-0.3.0.fits")
+    manga_file = fits.open(IMPORT_FILEPATH + "mnsa-0.3.0.fits")
     manga_hdu = manga_file[2]
     manga_data = manga_hdu.data
 
 
-    wise_file = fits.open(r"WISE variations/WISE_statistics_2arcsec_sigradec.fits")
+    wise_file = fits.open(IMPORT_FILEPATH + "WISE_statistics_2arcsec_sigradec.fits")
     wise_hdu = wise_file[1]
     hdu = wise_hdu.data
     wise_hdu.header
 
-    jiyan_file = fits.open(r"WISE variations/jiyan-agn-0.3.2.fits")
+    jiyan_file = fits.open(IMPORT_FILEPATH + "jiyan-agn-0.3.2.fits")
     jiyan_hdu = jiyan_file[1]
     jhdu = jiyan_hdu.data
     return manga_hdu, wise_hdu, jiyan_hdu
@@ -86,7 +86,7 @@ def import_files():
 
 
 def contour(x,y):
-    H, xedges, yedges = np.histogram2d((x),(y), bins=(50,40))
+    H, xedges, yedges = np.histogram2d((x),(y), bins=(100,100))
     xmesh, ymesh = np.meshgrid(xedges[:-1], yedges[:-1])
 
     # Smooth the contours (if astropy is installed)
@@ -240,18 +240,36 @@ def w2_w12cut(x1, y1, w1, w2, plateifu):
 
 # ## functions for each plot
 
+# %%
+def mnsa_vs_wise(w1, w2, plateifu, whdu, mhdu):
+
+    w1_mnsa = np.array([])
+    w2_mnsa = np.array([])
+
+    for i in plateifu:
+        w1_mnsa = np.append(w1_mnsa, mhdu[mhdu['plateifu'] == i]['maggies'][:,5])
+        w2_mnsa = np.append(w2_mnsa, mhdu[mhdu['plateifu'] == i]['maggies'][:,6])
+
+    #masks
+    mask = ~((w1_mnsa == -9999.) | (w2_mnsa == -9999.))
+    w1, w2, w1_mnsa, w2_mnsa = w1[mask], w2[mask], w1_mnsa[mask], w2_mnsa[mask]
+
+    mask1 = ~((w1 == 0.) | (w2 == 0.) | (w1_mnsa == 0.) | (w2_mnsa == 0.))
+    w1, w2, w1_mnsa, w2_mnsa = w1[mask1], w2[mask1], w1_mnsa[mask1], w2_mnsa[mask1]
+
+
+    return w1, w2, w1_mnsa, w2_mnsa
 # In[208]:
 
 
-def epoch2epoch_and_perepoch_var(x1, y1, w1, w2, plateifu, fn, save = False):
+def epoch2epoch_and_perepoch_var(x1r, y1r, w1r, w2r, pifu_r, x1b, y1b, w1b, w2b, pifu_b, fn, save = False):
     #plot 1: epoch-to-epoch variability and per epoch variability
-    #x1r, y1r, w1r, w2r, pifu_r, x1b, y1b, w1b, w2b, pifu_b = w12_cut(ASSEF_CUT, x1, y1, w1, w2, plateifu)
     x2, y2 = process_wise_data_per_epoch_var_plot(wise_hdu.data)
     xc2, yc2, z2 = contour(np.log10(x2), np.log10(y2))
     
     w12b = w1b - w2b
     w12r = w1r - w2r
-    w12 = w1 - w2
+    #w12 = w1 - w2
     
     fig, ax = plt.subplots(figsize = (20,6), ncols = 2,  gridspec_kw={'width_ratios': [1.35, 1]})
     axa, axb = ax
@@ -260,13 +278,9 @@ def epoch2epoch_and_perepoch_var(x1, y1, w1, w2, plateifu, fn, save = False):
     fmt = tkr.FormatStrFormatter("%.2f")
 
     #plot 1
-    #axa.set_facecolor("gainsboro")
     plot1_blue = axa.scatter(np.log10(x1b), np.log10(y1b), c = w12b, cmap = 'YlGnBu', alpha = 0.5, s = 4)
     plot1_red = axa.scatter(np.log10(x1r), np.log10(y1r), c = w12r, edgecolors = 'black', lw = 0.4, cmap = 'plasma_r', alpha = 0.75, s = 14)
     axa.axline((0, 0), slope= 1, color = 'black', linestyle = 'dashed', label = 'y = x')
-    #axa.axline((-0.5, -2), slope= 0, color = 'gray', linestyle = 'dashed', label = 'AGN cutoff')
-    #clevels = axa.contour(Xc1, Yc1, Z1, lw=.2, cmap='winter')
-    #axa.fill_between(np.linspace(-4.8, 0,100), -2*np.ones(100)+ 0, -2*np.ones(100) +3*np.ones(100), alpha=0.075, label = 'AGN')
     ca_blue = fig.colorbar(plot1_blue, ax=axa, orientation='vertical', pad=0.01, ticks=np.linspace(w12b.min(), w12b.max(), 5), format = fmt)
     ca_red = fig.colorbar(plot1_red, ax=axa, orientation='vertical', pad=0.01,fraction=0.1, ticks=np.linspace(w12r.min(), w12r.max(), 5), format = fmt)
     ca_blue.set_label(label = r'$\mu(\overline{W1}-\overline{W2})$',size=14)
@@ -295,7 +309,7 @@ def epoch2epoch_and_perepoch_var(x1, y1, w1, w2, plateifu, fn, save = False):
     axb.set_ylabel(r'expected $\log{Var(W2)}$ per epoch',  fontsize=14)
 
     if save == True:
-        plt.savefig(r'C:\Users\paiaa\Blanton Lab\WISE variations\\' + fn, bbox_inches = 'tight', pad_inches = 0.1, dpi = 300)
+        plt.savefig(SAVE_FILEPATH + fn, bbox_inches = 'tight', pad_inches = 0.1, dpi = 300)
 
 
 # In[209]:
@@ -306,11 +320,13 @@ def jiyan_cut(X1r, Y1r, W1r, W2r, pifu_r, X1b, Y1b, W1b, W2b, pifu_b, fn, save =
     p1b, p3b, w1b, w2b = process_data_jiyan_cut(jiyan_hdu.data, X1b, Y1b, W1b, W2b, pifu_b)
     w12b = w1b - w2b
     w12r = w1r - w2r
-    w12 = w1 - w2
+    #w12 = w1 - w2
     
     
     fig, ax = plt.subplots(ncols = 2, figsize = (16,5))
     axa, axb = ax
+
+    fmt = tkr.FormatStrFormatter("%.2f")
 
     axa.fill((-0.3, -0.3, 1.3, 1.3),(1.9,0.5, 0.5, 1.9), color = 'lightsteelblue', alpha = 0.2, label = 'Ji & Yan cut')
     plot1 = axa.scatter(p1b, p3b, c = w12b, cmap = 'YlGnBu', s = 8, alpha = 0.6)
@@ -343,7 +359,7 @@ def jiyan_cut(X1r, Y1r, W1r, W2r, pifu_r, X1b, Y1b, W1b, W2b, pifu_b, fn, save =
     axb.set_xlabel('$P1$',  fontsize=14)
 
     if save == True:
-        plt.savefig(r'C:\Users\paiaa\Blanton Lab\WISE variations\plots\\' + fn, bbox_inches = 'tight', pad_inches = 0.1, dpi = 300)
+        plt.savefig(SAVE_FILEPATH + fn, bbox_inches = 'tight', pad_inches = 0.1, dpi = 300)
     
     
 def jiyan_spur(X1r, Y1r, W1r, W2r, pifu_r, X1b, Y1b, W1b, W2b, pifu_b, fn, save = False):
@@ -351,10 +367,11 @@ def jiyan_spur(X1r, Y1r, W1r, W2r, pifu_r, X1b, Y1b, W1b, W2b, pifu_b, fn, save 
     p1b, p3b, w1b, w2b = process_data_jiyan_cut(jiyan_hdu.data, X1b, Y1b, W1b, W2b, pifu_b)
     w12b = w1b - w2b
     w12r = w1r - w2r
-    w12 = w1 - w2
+    #w12 = w1 - w2
     
     fig, ax = plt.subplots(ncols = 1)
     axa =  ax
+    fmt = tkr.FormatStrFormatter("%.2f")
 
     axa.fill((-0.3, -0.3, 1.3, 1.3),(1.9,0.5, 0.5, 1.9), color = 'lightsteelblue', alpha = 0.2, label = 'Ji & Yan cut')
     plot1 = axa.scatter(p1b, p3b, c = w12b, cmap = 'YlGnBu', s = 8, alpha = 0.6)
@@ -374,7 +391,7 @@ def jiyan_spur(X1r, Y1r, W1r, W2r, pifu_r, X1b, Y1b, W1b, W2b, pifu_b, fn, save 
     axa.set_xlabel('$P1$',  fontsize=14)
     
     if save == True:
-        plt.savefig(r'C:\Users\paiaa\Blanton Lab\WISE variations\plots\\' + fn, bbox_inches = 'tight', pad_inches = 0.1, dpi = 300)
+        plt.savefig(SAVE_FILEPATH + fn, bbox_inches = 'tight', pad_inches = 0.1, dpi = 300)
 
 
 # In[210]:
@@ -393,7 +410,7 @@ def w12_distribution(w1, w2, fn, save = False):
     axa.set_xlabel('$W1-W2$ (Vega mags)',  fontsize=14)
     
     if save == True:
-        plt.savefig(r'C:\Users\paiaa\Blanton Lab\WISE variations\plots\\' + fn, bbox_inches = 'tight', pad_inches = 0.1, dpi = 300)
+        plt.savefig(SAVE_FILEPATH + fn, bbox_inches = 'tight', pad_inches = 0.1, dpi = 300)
 
 
 # In[211]:
@@ -428,7 +445,7 @@ def W2_vs_err_varW2(x1, y1, w1, w2, plateifu, fn, save = False):
     
     
     if save == True:
-        plt.savefig(r'C:\Users\paiaa\Blanton Lab\WISE variations\plots\\' + fn, bbox_inches = 'tight', pad_inches = 0.1, dpi = 300)
+        plt.savefig(SAVE_FILEPATH + fn, bbox_inches = 'tight', pad_inches = 0.1, dpi = 300)
 
 
 # In[212]:
@@ -469,33 +486,97 @@ def var_w_W2_cut(X1, Y1, W1, W2, plateifu, fn, save = False):
 
     axa.set_xlabel(r'expected $\log{Var(W2)}$',  fontsize=14)
     axa.set_ylabel(r'observed $\log{Var(W2)}$',  fontsize=14)
+    
     if save == True:
-        plt.savefig(r'C:\Users\paiaa\Blanton Lab\WISE variations\plots\\' + fn, bbox_inches = 'tight', pad_inches = 0.1, dpi = 300)
+        plt.savefig(SAVE_FILEPATH + fn, bbox_inches = 'tight', pad_inches = 0.1, dpi = 300)
  
 
 
 # ## main function
 
+# %%
+def mnsa_vs_wise_plots(w1, w2, w1_mnsa, w2_mnsa, fn, save = False):
+    #converting wise vega mags to AB mags
+    rd = kcorrect.response.ResponseDict()
+    rd.load_response('wise_w2')
+    w2_vega = rd['wise_w2'].vega2ab
+    rd.load_response('wise_w1')
+    w1_vega = rd['wise_w1'].vega2ab
+
+    #wise mags from vega to ab to apparent
+    w1_ab = w1 + w1_vega
+    w2_ab = w2 + w2_vega
+
+    #mnsa mags from ab to apparent
+    w1_app = -2.5 * np.log10(w1_mnsa) 
+    w2_app = -2.5 * np.log10(w2_mnsa) 
+   
+   #masking out nan from apparent mags
+    mask = ~((np.isnan(w1_app)) | (np.isnan(w2_app)))
+    w1_app, w2_app, w1_ab, w2_ab = w1_app[mask], w2_app[mask], w1_ab[mask], w2_ab[mask]
+
+    w12_ab = w1_ab - w2_ab
+    w12_app = w1_app - w2_app
+    
+
+    xw1, yw1, zw1 = contour(w1_ab, w1_app)
+    xw2, yw2, zw2 = contour(w2_ab, w2_app)
+    xw12, yw12, zw12 = contour(w12_ab, w12_app)
+
+    fig, ax = plt.subplots(ncols = 3, figsize = (20, 5))
+    axa, axb, axc = ax
+
+    axa.scatter(w1_ab, w1_app, color = 'tomato', s = 6, alpha = 0.25)
+    axa.axline((0,0), slope = 1, color = 'black')
+    clevels1 = axa.contour(xw1, yw1, zw1, linewidths=0.75, cmap='winter')
+    sm1 = ScalarMappable(norm=plt.Normalize(zw1.min(), zw1.max()), cmap='winter')
+    fig.colorbar(sm1, ax=axa, orientation='vertical')
+
+    axb.scatter(w2_ab, w2_app, color = 'darkorange', s = 6, alpha = 0.25)
+    axb.axline((0,0), slope = 1, color = 'black')
+    clevels2 = axb.contour(xw2, yw2, zw2, linewidths=0.75, cmap='winter')
+    sm2 = ScalarMappable(norm=plt.Normalize(zw2.min(), zw2.max()), cmap='winter')
+    fig.colorbar(sm2, ax=axb, orientation='vertical')
+
+    axc.scatter(w12_ab, w12_app, color = 'chocolate', s  = 6, alpha = 0.25)
+    axc.axline((0,0), slope = 1, color = 'black')
+    clevels3 = axc.contour(xw12, yw12, zw12, linewidths=0.7, alpha = 0.9, cmap='winter')
+    sm3 = ScalarMappable(norm=plt.Normalize(zw12.min(), zw12.max()), cmap='winter')
+    fig.colorbar(sm3, ax=axc, orientation='vertical')
+
+    axa.set_xlabel('$W1$ (WISE)')
+    axa.set_ylabel('$W1$ (MNSA)')
+    axa.set_xlim(13, 19)
+    axa.set_ylim(13, 19)
+
+    axb.set_xlabel('$W2$ (WISE)')
+    axb.set_ylabel('$W2$ (MNSA)')
+    axb.set_xlim(13, 19)
+    axb.set_ylim(13, 20)
+
+    axc.set_xlabel('$W1-W2$ (WISE)')
+    axc.set_ylabel('$W1-W2$ (MNSA)')
+    axc.set_xlim(-1, 0.5)
+    axc.set_ylim(-1, 0)
+
+    plt.show()
+
+    if save == True:
+        fig.savefig(SAVE_FILEPATH + fn, bbox_inches = 'tight', pad_inches = 0.1, dpi = 300)
 # In[213]:
 
 
 def main():
-    t1 = time.time()
-    print('**FLITERING DATA**')
-    manga_hdu, wise_hdu, jiyan_hdu = import_files()
-    X1, Y1, W1, W2, plateifu = process_wise_data_variability_plot(wise_hdu.data)
-    X1r, Y1r, W1r, W2r, pifu_r, X1b, Y1b, W1b, W2b, pifu_b = w12_cut(ASSEF_CUT, x1, y1, w1, w2, plateifu)
-    X1_spur, Y1_spur, W1_spur, W2_spur, pifu_spur = spur_objects(X1, Y1, W1, W2, plateifu)
-    X1rs, Y1rs, W1rs, W2rs, pifu_rs, X1bs, Y1bs, W1bs, W2bs, pifu_bs = spur_w12cut(X1_spur, Y1_spur, W1_spur, W2_spur, pifu_spur)
     t2 = time.time()
     print('this took ' + str(round(t2-t1, 2)) + ' seconds')
     print('**PLOTTING DATA**')
-    epoch2epoch_and_perepoch_var(X1, Y1, W1, W2, plateifu, 'MaNGA_WISE_variations_colorcut_sigradec.jpg', save = False)
-    jiyan_cut(X1r, Y1r, W1r, W2r, pifu_r, X1b, Y1b, W1b, W2b, pifu_b, 'MaNGA_WISE_JiYan_colorcut_sigradec.jpg', save = False)
-    jiyan_spur(X1rs, Y1rs, W1rs, W2rs, pifu_rs, X1bs, Y1bs, W1bs, W2bs, pifu_bs, 'MaNGA_WISE_JiYan_spur_sigradec.jpg', save = False)
-    w12_distribution(W1_spur, W2_spur, 'MaNGA_WISE_spur_W12_distribution.jpg', save = False)
-    W2_vs_err_varW2(X1, Y1, W1, W2, plateifu, 'MaNGA_WISE_W2_vs_VarW2.jpg', save = False)
-    var_w_W2_cut(X1, Y1, W1, W2, plateifu, 'MaNGA_WISE_W2cut_variability.jpg', save = False)
+    epoch2epoch_and_perepoch_var(X1r, Y1r, W1r, W2r, pifu_r, X1b, Y1b, W1b, W2b, pifu_b, 'MaNGA_WISE_variations_colorcut_sigradec.jpg')
+    jiyan_cut(X1r, Y1r, W1r, W2r, pifu_r, X1b, Y1b, W1b, W2b, pifu_b, 'MaNGA_WISE_JiYan_colorcut_sigradec.jpg')
+    jiyan_spur(X1rs, Y1rs, W1rs, W2rs, pifu_rs, X1bs, Y1bs, W1bs, W2bs, pifu_bs, 'MaNGA_WISE_JiYan_spur_sigradec.jpg')
+    w12_distribution(W1_spur, W2_spur, 'MaNGA_WISE_spur_W12_distribution.jpg')
+    W2_vs_err_varW2(X1, Y1, W1, W2, plateifu, 'MaNGA_WISE_W2_vs_VarW2.jpg')
+    var_w_W2_cut(X1, Y1, W1, W2, plateifu, 'MaNGA_WISE_W2cut_variability.jpg')
+    mnsa_vs_wise_plots(w1_w, w2_w, w1_m, w2_m, 'mnsa_vs_wise_mags_distmod.jpg')
     t3 = time.time()
     print('the entire process took ' + str(round(t3-t1, 2)) + ' seconds')
 
@@ -504,35 +585,16 @@ def main():
 
 
 if __name__ == "__main__":
+    t1 = time.time()
+    print('**FLITERING DATA**')
+
+    manga_hdu, wise_hdu, jiyan_hdu = import_files()
+    X1, Y1, W1, W2, plateifu = process_wise_data_variability_plot(wise_hdu.data)
+    X1r, Y1r, W1r, W2r, pifu_r, X1b, Y1b, W1b, W2b, pifu_b = w12_cut(ASSEF_CUT, X1, Y1, W1, W2, plateifu)
+    X1_spur, Y1_spur, W1_spur, W2_spur, pifu_spur = spur_objects(X1, Y1, W1, W2, plateifu)
+    X1rs, Y1rs, W1rs, W2rs, pifu_rs, X1bs, Y1bs, W1bs, W2bs, pifu_bs = spur_w12cut(X1_spur, Y1_spur, W1_spur, W2_spur, pifu_spur)
+    w1_w, w2_w, w1_m, w2_m = mnsa_vs_wise(W1, W2, plateifu, wise_hdu.data, manga_hdu.data)
+    
     main()
 
-
-# In[ ]:
-
-
-
-
-
-# In[ ]:
-
-
-
-
-
-# In[ ]:
-
-
-
-
-
-# In[ ]:
-
-
-
-
-
-# In[ ]:
-
-
-
-
+    
